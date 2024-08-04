@@ -17,8 +17,8 @@ def community_create():
     if request.method == "POST":
         in_comm_name = request.json['community_name']
         in_comm_type = request.json['type']
-        private = (request.json['private'] == 1)
-        create_global_link = (request.json['global_link'] == 1) or not private
+        private = (request.json['private'] == True)
+        create_global_link = (request.json['global_link'] == True) or not private
         in_comm_desc = request.json['desc']
         
         # Get user making the new community
@@ -134,7 +134,7 @@ def community_remove_members():
     if user == None:
         return abort(409, description='Username associated with JWT not found.')
     if comm == None:
-        return abort(410, description='Could not find community with name={in_comm_name}')
+        return abort(410, description=f'Could not find community with name={in_comm_name}')
     
     comm_user = CommunityUser.query.filter_by(user_id=user.id, community_id=comm.id).first()
     if (comm_user == None and not is_user_in_groups(['Admin', 'TrustedUser'])):
@@ -175,7 +175,7 @@ def community_add_members():
     if user == None:
         return abort(409, description='Username associated with JWT not found.')
     if comm == None:
-        return abort(410, description='Could not find community with name={in_comm_name}')
+        return abort(410, description=f'Could not find community with name={in_comm_name}')
     
     comm_user = CommunityUser.query.filter_by(user_id=user.id, community_id=comm.id).first()
     if (comm_user == None and not is_user_in_groups(['Admin', 'TrustedUser'])):
@@ -228,7 +228,7 @@ def community_join(in_comm_name = None, in_active_url = None):
     if user == None:
         return abort(409, description='Username associated with JWT not found.')
     if comm == None:
-        return abort(409, description='Could not find community with name={in_comm_name}')
+        return abort(409, description=f'Could not find community with name={in_comm_name}')
 
     # If community is public -> User can join
     # If community is private, has a global url, and the correct url has been provided:
@@ -313,7 +313,7 @@ def community_invite():
     if user == None:
         return abort(409, description='Username associated with JWT not found.')
     if comm == None:
-        return abort(410, description='Could not find community with name={in_comm_name}')
+        return abort(410, description=f'Could not find community with name={in_comm_name}')
 
     #Check if CommunityUser already exists
     comm_user_admin = CommunityUser.query.filter_by(user_id=user.id, community_id=comm.id).first()
@@ -332,7 +332,7 @@ def community_invite():
         invited_user = RioUser.query.filter_by(username_lowercase=lower_and_remove_nonalphanumeric(username)).first()
         if invited_user == None:
             print(username)
-            return abort(413, description='User does not exist. Username={user}')
+            return abort(413, description=f'User does not exist. Username={user}')
 
     #Entire list has been validated, add users to table and send emails
     for user in list_of_users_to_invite:
@@ -404,7 +404,7 @@ def community_members():
     user=get_user(request)
 
     if comm == None:
-        return abort(409, description='Could not find community with name={in_comm_name}')
+        return abort(409, description=f'Could not find community with name={in_comm_name}')
     
     if comm.private:
         if user == None:
@@ -436,7 +436,7 @@ def community_tags():
     user=get_user(request)
         
     if comm == None:
-        return abort(409, description='Could not find community with name={in_comm_name}')
+        return abort(409, description=f'Could not find community with name={in_comm_name}')
     
     if comm.private:
         if user == None:
@@ -465,6 +465,7 @@ def community_tags():
             "username": "USERNAME",
             "admin": True/False
             "remove": True/False
+            "ban": True/False
             "key": True/False
 
         }
@@ -481,7 +482,7 @@ def community_manage():
     user=get_user(request)
 
     if comm == None:
-        return abort(409, description='Could not find community with name={in_comm_name}')
+        return abort(409, description=f'Could not find community with name={in_comm_name}')
     if user == None:
         return abort(409, description='No user logged in or associated with RioKey.')
 
@@ -490,16 +491,17 @@ def community_manage():
         return abort(409, description='User is not part of this community or not an admin.')
 
     list_of_users_to_manage = request.json['user_list']
-    #Check that all users exist before sending invites
+    
+    #Check that all users exist
     for user in list_of_users_to_manage:
         invited_user = RioUser.query.filter_by(username_lowercase=lower_and_remove_nonalphanumeric(user['username'])).first()
         if invited_user == None:
             return abort(409, description=f"User does not exist. Username={user['username']}")
         comm_user = CommunityUser.query.filter_by(user_id=invited_user.id, community_id=comm.id).first()
         if comm_user == None:
-            return abort(409, description='User not a part of the community, cannot be made admin. Username={user}')
+            return abort(409, description=f'User not a part of the community, cannot be made admin. Username={user}')
 
-    #Entire list has been validated, add users to table and send emails
+    #Entire list has been validated, perform actions
     updated_comm_users_list = list()
     for user_actions in list_of_users_to_manage:
         user = RioUser.query.filter_by(username_lowercase=lower_and_remove_nonalphanumeric(user_actions['username'])).first()
@@ -575,7 +577,7 @@ def community_sponsor():
     comm = Community.query.filter_by(name_lowercase=comm_name_lower).first()
 
     if comm == None:
-        return abort(409, description='Could not find community with name={in_comm_name}')
+        return abort(409, description=f'Could not find community with name={in_comm_name}')
 
     # Action - Get, Remove, Add
     action = lower_and_remove_nonalphanumeric(request.json['action'])
@@ -653,7 +655,7 @@ def community_key():
     user=get_user(request)
     
     if comm == None:
-        return abort(410, description='Could not find community with name={in_comm_name}')
+        return abort(410, description=f'Could not find community with name={in_comm_name}')
     if user == None:
         return abort(411, description='No user logged in or associated with RioKey.')
 
@@ -684,26 +686,21 @@ def community_key():
 @app.route('/community/update', methods=['POST'])
 @jwt_required(optional=True)
 def community_update():
-    in_comm_id = request.json['community_id'] #Required
+    in_comm_name = request.json['community_name'] #Required
 
     #Optional Args
-    name_provided = request.is_json and 'name' in request.json
-    new_name = request.json['name'] if name_provided else None
-    desc_provided = request.is_json and 'desc' in request.json
-    new_desc = request.json['desc'] if desc_provided else None
-    type_provided = request.is_json and 'type' in request.json
-    new_type = request.json['type'] if type_provided else None
-    link_provided = request.is_json and 'link' in request.json
-    new_link = request.json['link'] if link_provided else None
-    private_provided = request.is_json and 'private' in request.json
-    new_private= request.json['private'] if private_provided else None
-    active_tag_set_limit_provided = request.is_json and 'active_tag_set_limit' in request.json
-    new_active_tag_set_limit= request.json['active_tag_set_limit'] if active_tag_set_limit_provided else None
+    new_name = request.json.get('name')
+    new_desc = request.json.get('desc')
+    new_type = request.json.get('type')
+    new_link = request.json.get('link')
+    new_private = request.json.get('private')
+    new_active_tag_set_limit = request.json.get('active_tag_set_limit')
 
     # Get Comm
-    comm = Community.query.filter_by(id=in_comm_id).first()
+    comm_name_lower = lower_and_remove_nonalphanumeric(in_comm_name)
+    comm = Community.query.filter_by(name_lowercase=comm_name_lower).first()
     if comm == None:
-        return abort(409, description="No community found with id={in_comm_id}")
+        return abort(409, description=f'No community found with name={comm_name_lower}')
 
     #Make sure user is admin of community or Rio admin
     user=get_user(request)
@@ -720,7 +717,7 @@ def community_update():
     
     #User is authorized
     #Begin evaluating actions
-    if name_provided:
+    if new_name is not None:
         #Make sure that tag does not use the same name as an existing tag, comm, or tag_set
         tag_check = Tag.query.filter_by(name_lowercase=lower_and_remove_nonalphanumeric(new_name)).first()
         comm_name_check = Community.query.filter_by(name_lowercase=lower_and_remove_nonalphanumeric(new_name)).first()
@@ -741,17 +738,25 @@ def community_update():
         
         comm.name = new_name
         comm.name_lowercase = lower_and_remove_nonalphanumeric(new_name)
-    if desc_provided:
+    if new_desc is not None:
         comm.desc = new_desc
-    #Only allow type change if user is Rio admin
-    if type_provided and is_user_in_groups(user.id, ['Admin', 'TrustedUser']):
+        #Only allow type change if user is Rio admin
+    if (new_type is not None) and is_user_in_groups(user.id, ['Admin', 'TrustedUser']):
+        if new_type not in cCOMM_TYPES.values():
+            return abort(415, description='Invalid community type')
         comm.type = new_type
     #Only allow type change if user is Rio admin
-    if active_tag_set_limit_provided and is_user_in_groups(user.id, ['Admin', 'TrustedUser']):
+    if (new_active_tag_set_limit is not None) and is_user_in_groups(user.id, ['Admin', 'TrustedUser']):
+        if not isinstance(new_active_tag_set_limit, int):
+            return abort(416, description='Invalid active tag set limit. Limit must be an integer.')
         comm.active_tag_set_limit = new_active_tag_set_limit
-    if private_provided:
+    if new_private is not None:
+        if new_private not in [True, False]:
+            return abort(417, description='Invalid new private. Input must be true or false.')
         comm.private = new_private
-    if link_provided or comm.private == False:
+    if (new_link is not None) or comm.private == False:
+        if new_link not in [True, False]:
+            return abort(418, description='Invalid new link. Input must be true or false.')
         comm.update_link(new_link or comm.private == False)
 
     db.session.add(comm)
